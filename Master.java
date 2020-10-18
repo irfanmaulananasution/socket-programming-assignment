@@ -1,7 +1,7 @@
 import java.net.*;
 import java.io.*;
 
-class Worker{  
+class Master{  
     public static void main(String args[])throws Exception{
         BufferedReader br=new BufferedReader(new InputStreamReader(System.in));
         print("Master IP: ");
