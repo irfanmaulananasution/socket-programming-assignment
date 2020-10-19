@@ -23,7 +23,7 @@ class Master{
             if (order.equals("stop"))
                 break;
             else if (order.split(" ")[0].equals("generate"))
-                order = seeder(order.split(" ")[1]);
+                order = "sort 10 #"+seeder(order.split(" ")[1]);
             dout.writeUTF(order);
             dout.flush();
             print("Job given to Worker. Waiting for result...");
@@ -35,7 +35,7 @@ class Master{
         ss.close();
         print("Master is successfully stopped.");
     }
-
+    
     static void print(String s) {
         System.out.println(s);
     }
