@@ -20,7 +20,8 @@ class Worker{
     static Queue<String> finishedJobsQueue = new LinkedList<String>();
     static int runningFlag = 0; //active + running, active + idle, dead
 
-    public static void main(String args[])throws Exception{ //args1 = ip args2 = port
+    //run by typing "java Worker IP port". //args1 = ip args2 = port
+    public static void main(String args[])throws Exception{ 
       String masterIP = args[0];
       int masterPort = Integer.parseInt(args[1]);
       startConnection(masterIP, masterPort);
@@ -46,8 +47,8 @@ class Worker{
       String input = din.readUTF();
       
       String command;
-      if(input.length()>10) {
-        command = input.split("#")[0];
+      if(input.length()>12) {
+        command = input.split("#")[0];  //ini mungkin agak lama lebih cepet kalo di substring dulu karna dia bakal iterasi semua digit sampe akir
       }
       else {
         command = input;
@@ -75,7 +76,7 @@ class Worker{
         
         String sorted = sort(array);
         
-        String finalResult = command + sorted;
+        String finalResult = command + "#" + sorted;
         runningFlag = 0;
         finishedJobsQueue.offer(finalResult);
       }
