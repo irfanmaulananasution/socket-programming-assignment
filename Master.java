@@ -14,7 +14,6 @@ import java.util.*;
 //sendJob
 //receiveFinishedJob
 //print
-//print
 //seeder
 class Master{
   static Random rand = new Random();
@@ -26,26 +25,52 @@ class Master{
   static Queue<String> jobsQueue;
   static Queue<String> finishedJobsQueue;
   static BufferedReader shellReader;
-  static boolean stopFlag;
+  static boolean stopFlag = false;
+  static boolean readingFlag = true;
 
   //format sort = "sort id # array", id = xxxyyy, xxx=kode perequest (dari shell = 000), yyy=kode job keberapa
   public static void main(String args[]) throws Exception {//argumen 0 = port server socket
     prepareMaster();
     print("Waiting for worker");
-    connectWorker("34.224.75.203:3333");
-    connectWorker("34.224.75.203:3334");
-    print("Connection with worker has been established successfully.");
-    
-    while (stopFlag!=true) {
-      print("Waiting for job for worker.");
-      readShellCommand();
-      readShellCommand();
+    while(true){
+      printsln("Worker address: ");
+      String wAddr  = shellReader.readLine();
+      if(wAddr.equals("X")) break;  // stop menerima addr worker
+
+      else if(wAddr.equals("default")){
+        connectWorker("34.224.75.203:3333");
+        connectWorker("34.224.75.203:3334");
+        print("Connection with worker has been established successfully.");
+        break;
+      }
+
+      try {
+        connectWorker(wAddr);
+      } catch (Exception e) {
+        print("Worker not found, try again.");
+      }
+    }
+
+    while (true) {  
+      print("Waiting for orders.");
+      print(
+        "List of orders:"+
+        "sort xxxyyy #array (Sort the given array at #),\n"+
+        "generate n (Generate a random int array of size n), \n"+
+        "addWorker ipAddress:port (Adds a new worker),\n"+
+        "finish (stops asking inputs and distributes job to all connected worker),\n"+        
+        "stop (stops the master and closes all connected worker)."
+      );
+      while(readingFlag){
+        printsln("Order: ");
+        readShellCommand();
+      }
+      if(stopFlag) break;
       distributeJob();
       print("Job given to Worker. Waiting for result...");
       receiveFinishedJob();
       print("Result: " + finishedJobsQueue.poll());
       print("Result: " + finishedJobsQueue.peek());
-      
     }
     
     disconnectWorker(0);
@@ -81,7 +106,7 @@ class Master{
       dinList.add(new DataInputStream(tmpSocket.getInputStream()));
       doutList.add(new DataOutputStream(tmpSocket.getOutputStream()));
       workerJobInfo.add(new ArrayList<Integer>());
-      String.format("Connected to worker workerAddress");
+      print(String.format("Connected to worker s%", workerAddress));
     }
     catch (Exception e) {
     }
@@ -98,7 +123,7 @@ class Master{
     tmpDOut.close();
   }
   
-  static void readShellCommand() throws Exception {//nanti ada receive command buat nerima perintah dari user socke
+  static void readShellCommand() throws Exception {//nanti ada receive command buat nerima perintah dari user socket
     String input = shellReader.readLine();
     String command = input.length()>12 ? input.substring(0,12).split(" ")[0] : input.split(" ")[0];
     switch(command) {
@@ -107,13 +132,16 @@ class Master{
         //no break karna abis di generate akan di sort juga
       case "sort" : //format : sort xxxyyy # array
         jobsQueue.add(input);
-        
         break;
       case "stop" : //format : stop
-        stopFlag = true;
-        break;
+          stopFlag = true;
+          break;
+      case "finish" : //format : finish
+          readingFlag = false;
+          break;
       case "addWorker" : //format : addWorker ipAddress:port
-        workerAddressInfo.add(input.split(" ")[1]);
+        connectWorker(input.split(" ")[1]);
+        // workerAddressInfo.add(input.split(" ")[1]);
     }
   }
   
@@ -173,6 +201,10 @@ class Master{
   
   static void print(int i) {
     System.out.println(i);
+  }
+
+  static void printsln(String s) {
+    System.out.print(s);
   }
 
   static String seeder(String size) {

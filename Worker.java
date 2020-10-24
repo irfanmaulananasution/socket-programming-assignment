@@ -39,14 +39,13 @@ class Worker{
     while(true){
       print("Waiting for job...");
       String input = receiveCommand();
-      print("Order Received. Input:");
+      print("Order Received. Input: "+input);
+      if(input.equals("stop")) break;
       print("Sorting...");
       doSort();
       returnJob();
       print("Result has been returned to master.");
-      if(input.equals("stop")) break;
     }  
-    
     endConnection();
   }
   
@@ -123,7 +122,7 @@ class Worker{
   }
   
   static void endConnection() throws Exception{
-    dout.close();
+    din.close();
     dout.close();  
     s.close();
     print("Worker is successfully stopped."); 
