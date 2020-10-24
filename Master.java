@@ -32,8 +32,8 @@ class Master{
   public static void main(String args[]) throws Exception {//argumen 0 = port server socket
     prepareMaster();
     print("Waiting for worker");
-    connectWorker("localhost:3333");
-    connectWorker("localhost:3334");
+    connectWorker("34.224.75.203:3333");
+    connectWorker("34.224.75.203:3334");
     print("Connection with worker has been established successfully.");
     
     while (stopFlag!=true) {
