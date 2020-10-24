@@ -25,15 +25,14 @@ class Worker{
   static Socket s;
   static DataInputStream din;
   static DataOutputStream dout;
-  static Queue<String> jobsQueue = new LinkedList<String>();
-  static Queue<String> finishedJobsQueue = new LinkedList<String>();
+  static Queue<String> jobsQueue;
+  static Queue<String> finishedJobsQueue;
   static int runningFlag = 0; //active + running, active + idle, dead
 
-  //run by typing "java Worker IP port". //args1 = ip args2 = port
+  //run by typing "java Worker IP port". //args = port
   public static void main(String args[])throws Exception{ 
-    String masterIP = args[0];
-    int masterPort = Integer.parseInt(args[1]);
-    startConnection(masterIP, masterPort);
+    prepareWorker(args[0]);
+    startConnection();
     
     //while true ini masih sementara. nantinya pake thread
     while(true){
@@ -100,9 +99,15 @@ class Worker{
       }
   }
   
-  static void startConnection(String ip, int port) throws Exception{
+  static void prepareWorker(String port) throws Exception {
+    ss = new ServerSocket(Integer.parseInt(port));
+    jobsQueue = new LinkedList<String>();
+    finishedJobsQueue = new LinkedList<String>();
+  }
+  
+  static void startConnection() throws Exception{
     print("Connecting...");
-    s = new Socket(ip, port);
+    s = ss.accept();
     din = new DataInputStream(s.getInputStream());  
     dout=new DataOutputStream(s.getOutputStream());       
     print(
@@ -111,15 +116,15 @@ class Worker{
       "| | /| / / __ \\/ ___/ //_/ _ \\/ ___/\n"+
       "| |/ |/ / /_/ / /  / ,< /  __/ /\n"+
       "|__/|__/\\____/_/  /_/|_|\\___/_/\n"+
-      "\n"+
-      String.format("Connected to %s:%d",ip,port)
+      "\n"//+
+      //String.format("Connected to %s:%d",ip,port)
     );
   }
   
   static void endConnection() throws Exception{
     dout.close();
     dout.close();  
-    s.close(); 
+    s.close();
     print("Worker is successfully stopped."); 
   }
   

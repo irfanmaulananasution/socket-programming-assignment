@@ -18,11 +18,11 @@ import java.util.*;
 //seeder
 class Master{
   static Random rand = new Random();
-  static ServerSocket ss;
   static ArrayList<Socket> socketList;
   static ArrayList<DataInputStream> dinList;
   static ArrayList<DataOutputStream> doutList;
   static ArrayList<ArrayList<Integer>> workerJobInfo;
+  static ArrayList<String> workerAddressInfo;
   static Queue<String> jobsQueue;
   static Queue<String> finishedJobsQueue;
   static BufferedReader shellReader;
@@ -30,10 +30,10 @@ class Master{
 
   //format sort = "sort id # array", id = xxxyyy, xxx=kode perequest (dari shell = 000), yyy=kode job keberapa
   public static void main(String args[]) throws Exception {//argumen 0 = port server socket
-    prepareMaster(args[0]);
+    prepareMaster();
     print("Waiting for worker");
-    connectWorker();//nantinya ini pake thread dan while true supaya bisa nerima banyak worker
-    connectWorker();
+    connectWorker("localhost:3333");
+    connectWorker("localhost:3334");
     print("Connection with worker has been established successfully.");
     
     while (stopFlag!=true) {
@@ -42,24 +42,22 @@ class Master{
       readShellCommand();
       distributeJob();
       print("Job given to Worker. Waiting for result...");
-      receiveFinishedJob(0);
-      receiveFinishedJob(1);
+      receiveFinishedJob();
       print("Result: " + finishedJobsQueue.poll());
       print("Result: " + finishedJobsQueue.peek());
       
     }
     
     disconnectWorker(0);
-    ss.close();
     print("Master is successfully stopped.");
   }
   
-  static void prepareMaster(String port) throws Exception {
-    ss = new ServerSocket(Integer.parseInt(port));
+  static void prepareMaster() throws Exception {
     socketList = new ArrayList<Socket>();
     dinList = new ArrayList<DataInputStream>();
     doutList = new ArrayList<DataOutputStream>();
     workerJobInfo = new ArrayList<ArrayList<Integer>>();
+    workerAddressInfo = new ArrayList<String>();
     jobsQueue = new LinkedList<String>();
     finishedJobsQueue = new LinkedList<String>();
     shellReader = new BufferedReader(new InputStreamReader(System.in));
@@ -73,20 +71,27 @@ class Master{
     );
   }
 
-  static void connectWorker() throws Exception {
-    Socket tmpSocket = ss.accept();
-    socketList.add(tmpSocket);
-    dinList.add(new DataInputStream(tmpSocket.getInputStream()));
-    doutList.add(new DataOutputStream(tmpSocket.getOutputStream()));
-    workerJobInfo.add(new ArrayList<Integer>());
-    print("new worker connected");
+  //nanti fungsi upscale downscale make ini dengan manfaatin variable workerAddressInfo
+  static void connectWorker(String workerAddress) throws Exception {//format input = ipAddress:port
+    try {
+      String workerIP = workerAddress.split(":")[0];
+      int workerPort = Integer.parseInt(workerAddress.split(":")[1]);
+      Socket tmpSocket = new Socket(workerIP, workerPort);
+      socketList.add(tmpSocket);
+      dinList.add(new DataInputStream(tmpSocket.getInputStream()));
+      doutList.add(new DataOutputStream(tmpSocket.getOutputStream()));
+      workerJobInfo.add(new ArrayList<Integer>());
+      String.format("Connected to worker workerAddress");
+    }
+    catch (Exception e) {
+    }
   }
   
-  static void disconnectWorker(int workerID) throws Exception {
-    Socket tmpS = socketList.remove(workerID);
-    DataInputStream tmpDIn = dinList.remove(workerID);
-    DataOutputStream tmpDOut = doutList.remove(workerID);
-    workerJobInfo.remove(workerID);
+  static void disconnectWorker(int workerIdx) throws Exception {
+    Socket tmpS = socketList.remove(workerIdx);
+    DataInputStream tmpDIn = dinList.remove(workerIdx);
+    DataOutputStream tmpDOut = doutList.remove(workerIdx);
+    workerJobInfo.remove(workerIdx);
     
     tmpS.close();
     tmpDIn.close();
@@ -97,16 +102,18 @@ class Master{
     String input = shellReader.readLine();
     String command = input.length()>12 ? input.substring(0,12).split(" ")[0] : input.split(" ")[0];
     switch(command) {
-      case "generate" :
+      case "generate" : //format : generate int
         input = "sort 000000 #" + seeder(input.split(" ")[1]); //nanti harusnya ada fungsi buat generate id nya
         //no break karna abis di generate akan di sort juga
-      case "sort" : 
+      case "sort" : //format : sort xxxyyy # array
         jobsQueue.add(input);
         
         break;
-      case "stop" :
+      case "stop" : //format : stop
         stopFlag = true;
         break;
+      case "addWorker" : //format : addWorker ipAddress:port
+        workerAddressInfo.add(input.split(" ")[1]);
     }
   }
   
@@ -115,7 +122,6 @@ class Master{
     int workerIdx = getWorkerWithLowestQueue();
     int tmpLimit = jobsQueue.size();
     for(int jobsIdx = 0; jobsIdx<tmpLimit; jobsIdx++) {
-      print(workerIdx);
       if(workerIdx == workerJobInfo.size()) { workerIdx = 0; }
       sendJob(workerIdx);
       workerIdx++;
@@ -147,15 +153,18 @@ class Master{
     tmpDOut.flush();
   }
   
-  static void receiveFinishedJob(int workerID) throws Exception  {
-    DataInputStream tmpDIn = dinList.get(workerID);
-    String finishedJob = tmpDIn.readUTF();
-    
-    //hapus ID job ini dari list job worker itu //btw ini bisa pake cara yg sama dengan di sendjob, cuma tadi pas nulis lupa format finishedJob kaya apa
-    String jobId = finishedJob.substring(0,20).split(" ")[1];
-    workerJobInfo.get(workerID).remove(jobId);
-    
-    finishedJobsQueue.add(finishedJob);
+  static void receiveFinishedJob() throws Exception  {
+    for(int dinIdx = 0; dinIdx<dinList.size(); dinIdx++) {
+      if(dinList.get(dinIdx) == null) {continue;} //socket yg lagi dimatiin di null in semua variable socket nya kecuali workerAddressInfo
+      DataInputStream tmpDIn = dinList.get(dinIdx);
+      String finishedJob = tmpDIn.readUTF();
+      
+      //hapus ID job ini dari list job worker itu //btw ini bisa pake cara yg sama dengan di sendjob, cuma tadi pas nulis lupa format finishedJob kaya apa
+      String jobId = finishedJob.substring(0,20).split(" ")[1];
+      workerJobInfo.get(dinIdx).remove(jobId);
+      
+      finishedJobsQueue.add(finishedJob);
+    }
   }
   
   static void print(String s) {
