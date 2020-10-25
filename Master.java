@@ -3,6 +3,9 @@ import java.util.Arrays;
 import java.util.Random;
 import java.io.*;
 import java.util.*;
+import java.lang.Thread;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 //main
 //prepareMaster
@@ -12,7 +15,7 @@ import java.util.*;
 //distributeJob
 //getWorkerWithLowestQueue
 //sendJob
-//receiveFinishedJob
+//receiveFromWorker
 //print
 //seeder
 class Master{
@@ -27,54 +30,35 @@ class Master{
   static BufferedReader shellReader;
   static boolean stopFlag = false;
   static boolean readingFlag = true;
+  static List<MasterHelper> masterHelperList;
+  static ExecutorService pool;
+
 
   //format sort = "sort id # array", id = xxxyyy, xxx=kode perequest (dari shell = 000), yyy=kode job keberapa
   public static void main(String args[]) throws Exception {//argumen 0 = port server socket
     prepareMaster();
-    print("Waiting for worker");
-    while(true){
-      printsln("Worker address: ");
-      String wAddr  = shellReader.readLine();
-      if(wAddr.equals("X")) break;  // stop menerima addr worker
-
-      else if(wAddr.equals("default")){
-        connectWorker("34.224.75.203:3333");
-        connectWorker("34.224.75.203:3334");
-        print("Connection with worker has been established successfully.");
-        break;
-      }
-
-      try {
-        connectWorker(wAddr);
-      } catch (Exception e) {
-        print("Worker not found, try again.");
-      }
-    }
-
-    while (true) {  
-      print("Waiting for orders.");
-      print(
-        "List of orders:"+
-        "sort xxxyyy #array (Sort the given array at #),\n"+
-        "generate n (Generate a random int array of size n), \n"+
-        "addWorker ipAddress:port (Adds a new worker),\n"+
-        "finish (stops asking inputs and distributes job to all connected worker),\n"+        
-        "stop (stops the master and closes all connected worker)."
-      );
-      while(readingFlag){
-        printsln("Order: ");
-        readShellCommand();
-      }
-      if(stopFlag) break;
-      distributeJob();
-      print("Job given to Worker. Waiting for result...");
-      receiveFinishedJob();
-      print("Result: " + finishedJobsQueue.poll());
-      print("Result: " + finishedJobsQueue.peek());
+    connectWorker(workerAddressInfo.get(0));
+    println(
+      "---------------List Of Command---------------\n"+
+      ">help = show the command list\n"+
+      ">sort [xxxyyy] #[array] = Sort the given array at #,\n"+
+      ">generate [n] = Generate a random int array of size n, \n"+ 
+      ">stop = stops the master and closes all connected worker.\n"+
+      ">addWorkerAddress [ipAddress:port] = Adds new address of worker to the list,\n"+    
+      ">activateNewWorker [idx] = activate a worker (upscale),\n"+  
+      ">deactivateWorker [idx] = deactivate a worker (downscale) ,\n"+   
+      ">showWorkerAddressList = show all worker listed in the master whether its active or not\n"+
+      ">showFinishedJob = show one finished job and how many job are finished\n"+
+      "---------------List Of Command---------------"
+    );
+    
+    while (stopFlag == false) {
+      print("Input : ");
+      readShellCommand();
     }
     
     disconnectWorker(0);
-    print("Master is successfully stopped.");
+    println("Master is successfully stopped.");
   }
   
   static void prepareMaster() throws Exception {
@@ -86,7 +70,7 @@ class Master{
     jobsQueue = new LinkedList<String>();
     finishedJobsQueue = new LinkedList<String>();
     shellReader = new BufferedReader(new InputStreamReader(System.in));
-    print(
+    println(
       "                         __\n"+
       "   ____ ___  ____ ______/ /____  _____\n"+
       "  / __ `__ \\/ __ `/ ___/ __/ _ \\/ ___/\n"+
@@ -94,11 +78,31 @@ class Master{
       "/_/ /_/ /_/\\__,_/____/\\__/\\___/_/\n"+
       "\n"
     );
+    pool = Executors.newFixedThreadPool(2);
+    masterHelperList = new ArrayList<MasterHelper>();
+    MasterHelper distributeJobHelper = new MasterHelper("distributeJob");
+    MasterHelper receiveFromWorkerHelper = new MasterHelper("receiveFromWorker");
+    masterHelperList.add(distributeJobHelper);
+    masterHelperList.add(receiveFromWorkerHelper);
+    pool.execute(distributeJobHelper);
+    pool.execute(receiveFromWorkerHelper);
+    
+    requestInitialWorkerAddress();
+  }
+  
+  static void requestInitialWorkerAddress() throws Exception{
+    print("You need to input all worker address first!. how many worker are prepared?");
+    int workerNum = Integer.parseInt(shellReader.readLine());
+    for(int i = 0; i<workerNum ; i++) {
+      print("Worker address " + (i+1) + ": ");
+      String workerAddress = shellReader.readLine();
+      workerAddressInfo.add(workerAddress);
+    }
+    println(""+ workerNum + " Worker Address added to list");
   }
 
   //nanti fungsi upscale downscale make ini dengan manfaatin variable workerAddressInfo
   static void connectWorker(String workerAddress) throws Exception {//format input = ipAddress:port
-    try {
       String workerIP = workerAddress.split(":")[0];
       int workerPort = Integer.parseInt(workerAddress.split(":")[1]);
       Socket tmpSocket = new Socket(workerIP, workerPort);
@@ -106,10 +110,7 @@ class Master{
       dinList.add(new DataInputStream(tmpSocket.getInputStream()));
       doutList.add(new DataOutputStream(tmpSocket.getOutputStream()));
       workerJobInfo.add(new ArrayList<Integer>());
-      print(String.format("Connected to worker s%", workerAddress));
-    }
-    catch (Exception e) {
-    }
+      println(String.format("Connected to worker %s", workerAddress));
   }
   
   static void disconnectWorker(int workerIdx) throws Exception {
@@ -123,25 +124,67 @@ class Master{
     tmpDOut.close();
   }
   
+  static void showWorkerAddressList() {
+    String result = "";
+    for(int i = 0; i<workerAddressInfo.size(); i++) {
+      result = result + i + ". " + workerAddressInfo.get(i) + "\n";
+    }
+    print(result);
+  }
+  
   static void readShellCommand() throws Exception {//nanti ada receive command buat nerima perintah dari user socket
     String input = shellReader.readLine();
-    String command = input.length()>12 ? input.substring(0,12).split(" ")[0] : input.split(" ")[0];
+    String command = input.length()>25 ? input.substring(0,25).split(" ")[0] : input.split(" ")[0];
     switch(command) {
+      case "help" :        
+        println(
+          "---------------List Of Command---------------\n"+
+          ">help = show the command list\n"+
+          ">sort [xxxyyy] #[array] = Sort the given array at #,\n"+
+          ">generate [n] = Generate a random int array of size n, \n"+ 
+          ">stop = stops the master and closes all connected worker.\n"+
+          ">addWorkerAddress [ipAddress:port] = Adds new address of worker to the list,\n"+    
+          ">activateNewWorker [idx] = activate a worker (upscale),\n"+  
+          ">deactivateWorker [idx] = deactivate a worker (downscale) ,\n"+   
+          ">showWorkerAddressList = show all worker listed in the master whether its active or not\n"+
+          ">showFinishedJob = show one finished job and how many job are finished\n"+
+          "---------------List Of Command---------------"
+        );
+        break;
       case "generate" : //format : generate int
+        println("generate");
         input = "sort 000000 #" + seeder(input.split(" ")[1]); //nanti harusnya ada fungsi buat generate id nya
         //no break karna abis di generate akan di sort juga
       case "sort" : //format : sort xxxyyy # array
+        println("sort");
         jobsQueue.add(input);
         break;
       case "stop" : //format : stop
+        println("stop");
           stopFlag = true;
           break;
-      case "finish" : //format : finish
-          readingFlag = false;
-          break;
-      case "addWorker" : //format : addWorker ipAddress:port
-        connectWorker(input.split(" ")[1]);
-        // workerAddressInfo.add(input.split(" ")[1]);
+      case "addWorkerAddress" : //format : addWorkerAddress ipAddress:port
+        println("addWorkerAddress");
+        workerAddressInfo.add(input.split(" ")[1]);
+        break;
+      case "activateNewWorker" : //format : activateNewWorker idx
+        println("activateNewWorker");
+        int tmpIdx = Integer.parseInt(input.split(" ")[1]);
+        connectWorker(workerAddressInfo.get(tmpIdx));
+        break;
+      case "deactivateWorker" : //format : deactivateWorker idx
+        println("deactivateWorker");
+        disconnectWorker(Integer.parseInt(input.split(" ")[1]));
+        break;
+      case "showWorkerAddressList" : //format : showWorkerAddressList
+        println("showWorkerAddressList");
+        showWorkerAddressList();
+        break;
+      case "showFinishedJob" : //format : showFinishedJob
+        println("showFinishedJob");
+        print(finishedJobsQueue.peek());
+        println(" in Queue : " + finishedJobsQueue.size());
+        break;
     }
   }
   
@@ -179,9 +222,15 @@ class Master{
     DataOutputStream tmpDOut = doutList.get(workerIdx);
     tmpDOut.writeUTF(job);
     tmpDOut.flush();
+  }  
+
+  static void commandWorker(int workerIdx, String command) throws Exception{
+    DataOutputStream tmpDOut = doutList.get(workerIdx);
+    tmpDOut.writeUTF(command);
+    tmpDOut.flush();
   }
   
-  static void receiveFinishedJob() throws Exception  {
+  static void receiveFromWorker() throws Exception  {
     for(int dinIdx = 0; dinIdx<dinList.size(); dinIdx++) {
       if(dinList.get(dinIdx) == null) {continue;} //socket yg lagi dimatiin di null in semua variable socket nya kecuali workerAddressInfo
       DataInputStream tmpDIn = dinList.get(dinIdx);
@@ -189,21 +238,25 @@ class Master{
       
       //hapus ID job ini dari list job worker itu //btw ini bisa pake cara yg sama dengan di sendjob, cuma tadi pas nulis lupa format finishedJob kaya apa
       String jobId = finishedJob.substring(0,20).split(" ")[1];
+      if(jobId.equals("status")) {
+        //doReportStatus
+        break;
+      }
       workerJobInfo.get(dinIdx).remove(jobId);
       
       finishedJobsQueue.add(finishedJob);
     }
   }
   
-  static void print(String s) {
+  static void println(String s) {
     System.out.println(s);
   }
   
-  static void print(int i) {
+  static void println(int i) {
     System.out.println(i);
   }
 
-  static void printsln(String s) {
+  static void print(String s) {
     System.out.print(s);
   }
 
@@ -214,5 +267,35 @@ class Master{
       job[i] = rand.nextInt(max+1);
     }
     return Arrays.toString(job);
+  }
+}
+
+class MasterHelper implements Runnable{
+  String handlerTask;
+
+  MasterHelper(String command) {
+    this.handlerTask = command;
+  }
+
+  @Override
+  public void run() {
+    try {
+      if (handlerTask.equals("distributeJob")) {
+        while(true) {
+          Master.distributeJob();
+          Thread.sleep(5);
+        }
+      }
+      if (handlerTask.equals("receiveFromWorker")) {
+        while(true) {
+          Master.receiveFromWorker();
+          Thread.sleep(5);
+        }
+
+      }
+    }
+    catch (Exception e) {
+      System.out.println(e);
+    }
   }
 }

@@ -11,6 +11,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.io.Serializable;
 import java.util.List;
+import java.util.ArrayList;
 
 //main
 //receiveCommand
@@ -28,30 +29,33 @@ class Worker{
   static DataOutputStream dout;
   static Queue<String> jobsQueue;
   static Queue<String> finishedJobsQueue;
-  static int runningFlag = 0; //active + running, active + idle, dead
+  static String runningFlag = "idle"; //active + running, active + idle, dead
+  static List<WorkerHelper> workerHelperList;
+  static ExecutorService pool;
 
   //run by typing "java Worker IP port". //args = port
   public static void main(String args[])throws Exception{ 
     prepareWorker(args[0]);
-    startConnection();
     
     //while true ini masih sementara. nantinya pake thread
     while(true){
-      print("Waiting for job...");
-      String input = receiveCommand();
-      print("Order Received. Input: "+input);
-      if(input.equals("stop")) break;
-      print("Sorting...");
-      doSort();
-      returnJob();
-      print("Result has been returned to master.");
-    }  
-    endConnection();
+      try{
+        print("Waiting for command");
+        receiveCommand();
+        print("Command accepted");
+        print("");
+      }
+      catch (SocketException e) {
+        print("Socket Error");
+        endConnection();
+        startConnection();
+      }
+    }
   }
   
   //format sort = "sort id | array csv"
   //menerima dan mendefine perintah dari master
-  static String receiveCommand() throws Exception{
+  static void receiveCommand() throws Exception{
     String input = din.readUTF();
     
     String command;
@@ -67,65 +71,95 @@ class Worker{
         jobsQueue.add(input);
         break;
       case "stop" :
-        //doStop
+        endConnection();
+        startConnection();
         break;
+      case "status" :
+        returnStatusToMaster();
+        //sendRunningFlag
+
     }
-    return input;
   }
   
   //persiapan sebelum sort (mengambil array dari format perintah dari master) dan sorting
-  static void doSort() {        
+  static void doSort() {
     if(jobsQueue.peek() != null) {
       String input = jobsQueue.poll();
       int borderIdx = input.indexOf("#");
       String command = input.substring(0,borderIdx);
       String array = input.substring(borderIdx+1, input.length());
-      runningFlag = Integer.parseInt(command.split(" ")[1]);
+      runningFlag = command.split(" ")[1];
       
       String sorted = sort(array);
       
       String finalResult = command + "#" + sorted;
-      runningFlag = 0;
+      runningFlag = "idle";
       finishedJobsQueue.offer(finalResult);
     }
   }
   
   //mengirim hasil ke master
-  static void returnJob() throws Exception{
-      if(finishedJobsQueue.peek() != null) {
-        String toBeReturned = finishedJobsQueue.poll();
-        dout.writeUTF(toBeReturned);
-        dout.flush();
-      }
+  static void returnJobToMaster() throws Exception{
+    if(finishedJobsQueue.peek() != null) {
+      print("RETURNING SOMETHING");
+      String toBeReturned = finishedJobsQueue.poll();
+      dout.writeUTF(toBeReturned);
+      dout.flush();
+    }
+  }
+  
+  static void returnStatusToMaster() throws Exception{
+    String toBeReturned = runningFlag;
+    dout.writeUTF(toBeReturned);
+    dout.flush();
   }
   
   static void prepareWorker(String port) throws Exception {
-    ss = new ServerSocket(Integer.parseInt(port));
-    jobsQueue = new LinkedList<String>();
-    finishedJobsQueue = new LinkedList<String>();
-  }
-  
-  static void startConnection() throws Exception{
-    print("Connecting...");
-    s = ss.accept();
-    din = new DataInputStream(s.getInputStream());  
-    dout=new DataOutputStream(s.getOutputStream());       
     print(
       "                      __\n"+
       " _      ______  _____/ /_____  _____\n"+
       "| | /| / / __ \\/ ___/ //_/ _ \\/ ___/\n"+
       "| |/ |/ / /_/ / /  / ,< /  __/ /\n"+
       "|__/|__/\\____/_/  /_/|_|\\___/_/\n"+
-      "\n"//+
+      "\n"+
+      "waiting for Master"
       //String.format("Connected to %s:%d",ip,port)
     );
+    ss = new ServerSocket(Integer.parseInt(port));
+    jobsQueue = new LinkedList<String>();
+    finishedJobsQueue = new LinkedList<String>();
+    workerHelperList = new ArrayList<WorkerHelper>();
+
+    startConnection();
+
+  }
+  
+  static void startConnection() throws Exception{
+    print("Listening");
+    s = ss.accept();
+    din = new DataInputStream(s.getInputStream());  
+    dout=new DataOutputStream(s.getOutputStream());
+    pool = Executors.newFixedThreadPool(2);
+    WorkerHelper doSortHelper = new WorkerHelper("doSort");
+    WorkerHelper returnJobHelper = new WorkerHelper("returnJob");
+    workerHelperList.add(doSortHelper);
+    workerHelperList.add(returnJobHelper);
+    pool.execute(doSortHelper);
+    pool.execute(returnJobHelper);
+    
+    print("Master connected");
   }
   
   static void endConnection() throws Exception{
+    while(jobsQueue.isEmpty() == false || finishedJobsQueue.isEmpty() == false) {
+      Thread.sleep(1000);
+    }
+    pool.shutdownNow();
+    workerHelperList.clear();
     din.close();
     dout.close();  
     s.close();
-    print("Worker is successfully stopped."); 
+    print("Master disconnected"); 
   }
   
   static void print(String s){System.out.println(s);}
@@ -168,4 +202,33 @@ class Worker{
     // Returns the String repr of the sorted array
     return Arrays.toString(toSort);
   }
-} 
+}
+
+class WorkerHelper implements Runnable{
+  String handlerTask;
+
+  WorkerHelper(String command) {
+    this.handlerTask = command;
+  }
+
+  @Override
+  public void run() {
+    try {
+      if (handlerTask.equals("doSort")) {
+        while(true) {
+          Worker.doSort();
+          Thread.sleep(1);
+        }
+      }
+      if (handlerTask.equals("returnJob")) {
+        while(true) {
+          Worker.returnJobToMaster();
+          Thread.sleep(1000);
+        }
+
+      }
+    }
+    catch (Exception e) {
+    }
+  }
+}
