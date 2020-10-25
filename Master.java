@@ -49,12 +49,18 @@ class Master{
       ">deactivateWorker [idx] = deactivate a worker (downscale) ,\n"+   
       ">showWorkerAddressList = show all worker listed in the master whether its active or not\n"+
       ">showFinishedJob = show one finished job and how many job are finished\n"+
+      ">pauseDistribution [second] = pause job distribution from master. job will be kept in queue\n"+
       "---------------List Of Command---------------"
     );
     
     while (stopFlag == false) {
-      print("Input : ");
-      readShellCommand();
+      try{
+        print("Input : ");
+        readShellCommand();
+      }
+      catch(Exception e) {
+        println("Error");
+      }
     }
     
     disconnectWorker(0);
@@ -78,14 +84,17 @@ class Master{
       "/_/ /_/ /_/\\__,_/____/\\__/\\___/_/\n"+
       "\n"
     );
-    pool = Executors.newFixedThreadPool(2);
+    pool = Executors.newFixedThreadPool(3);
     masterHelperList = new ArrayList<MasterHelper>();
     MasterHelper distributeJobHelper = new MasterHelper("distributeJob");
     MasterHelper receiveFromWorkerHelper = new MasterHelper("receiveFromWorker");
+    MasterHelper autoScalingHelper = new MasterHelper("autoScaling");
     masterHelperList.add(distributeJobHelper);
     masterHelperList.add(receiveFromWorkerHelper);
+    masterHelperList.add(autoScalingHelper);
     pool.execute(distributeJobHelper);
     pool.execute(receiveFromWorkerHelper);
+    pool.execute(autoScalingHelper);
     
     requestInitialWorkerAddress();
   }
@@ -148,6 +157,7 @@ class Master{
           ">deactivateWorker [idx] = deactivate a worker (downscale) ,\n"+   
           ">showWorkerAddressList = show all worker listed in the master whether its active or not\n"+
           ">showFinishedJob = show one finished job and how many job are finished\n"+
+          ">pauseDistribution [second] = pause job distribution from master. job will be kept in queue\n"+
           "---------------List Of Command---------------"
         );
         break;
@@ -185,15 +195,21 @@ class Master{
         print(finishedJobsQueue.peek());
         println(" in Queue : " + finishedJobsQueue.size());
         break;
+      case "pauseDistribution" : //format : pauseDistribution [second]
+        println("pauseDistribution");
+        int duration = Integer.parseInt(input.split(" ")[1]);
+        masterHelperList.get(0).pauseDistributeJob(duration);
+        break;
     }
   }
   
   static void distributeJob() throws Exception{//load balancer
     //job distribution start from worker with lowest job
+    
     int workerIdx = getWorkerWithLowestQueue();
     int tmpLimit = jobsQueue.size();
     for(int jobsIdx = 0; jobsIdx<tmpLimit; jobsIdx++) {
-      if(workerIdx == workerJobInfo.size()) { workerIdx = 0; }
+      if(workerIdx == socketList.size()) { workerIdx = 0; }
       sendJob(workerIdx);
       workerIdx++;
     }
@@ -201,7 +217,7 @@ class Master{
   
   static int getWorkerWithLowestQueue() {
     int lowestQIdx = 0;
-    for(int i=1; i<workerJobInfo.size(); i++) {
+    for(int i=1; i<socketList.size(); i++) {
       if(workerJobInfo.get(i).size()<workerJobInfo.get(lowestQIdx).size()) {
         lowestQIdx = i;
       }
@@ -248,6 +264,31 @@ class Master{
     }
   }
   
+  static void autoScaling() throws Exception {
+    int currentJob = 0;
+    int activeWorkerNum = socketList.size();
+    if(activeWorkerNum != 0 ) {
+      for(int i = 0 ; i<socketList.size() ; i++) {
+        currentJob = currentJob + workerJobInfo.get(i).size();
+      }
+      
+      if(currentJob/activeWorkerNum > 10 && activeWorkerNum<=workerAddressInfo.size()) {
+        try{
+          println("System is UPSCALED");
+          String tmpAddress = workerAddressInfo.get(activeWorkerNum);
+          connectWorker(tmpAddress);
+        }
+        catch(Exception e) {
+          println("warning : System failed to upscale");
+        }
+      }
+      else if(currentJob/activeWorkerNum <= 2 && activeWorkerNum>1) {
+        println("System is DOWNSCALED");
+        disconnectWorker(activeWorkerNum-1);
+      }
+    }
+  }
+  
   static void println(String s) {
     System.out.println(s);
   }
@@ -272,9 +313,15 @@ class Master{
 
 class MasterHelper implements Runnable{
   String handlerTask;
+  private volatile int pause = 0;  
 
   MasterHelper(String command) {
     this.handlerTask = command;
+  }
+  
+  public void pauseDistributeJob(int second) {
+    this.pause = second*1000;
+    Master.println("paused for " + second + " second");
   }
 
   @Override
@@ -282,16 +329,23 @@ class MasterHelper implements Runnable{
     try {
       if (handlerTask.equals("distributeJob")) {
         while(true) {
+          Thread.sleep(pause);
+          pause = 0;
           Master.distributeJob();
           Thread.sleep(5);
         }
       }
-      if (handlerTask.equals("receiveFromWorker")) {
+      else if (handlerTask.equals("receiveFromWorker")) {
         while(true) {
           Master.receiveFromWorker();
           Thread.sleep(5);
         }
-
+      }
+      else if (handlerTask.equals("autoScaling")) {
+        while(true) {
+          Master.autoScaling();
+          Thread.sleep(1000);
+        }
       }
     }
     catch (Exception e) {

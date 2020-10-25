@@ -223,7 +223,7 @@ class WorkerHelper implements Runnable{
       if (handlerTask.equals("returnJob")) {
         while(true) {
           Worker.returnJobToMaster();
-          Thread.sleep(1000);
+          Thread.sleep(50);
         }
 
       }
