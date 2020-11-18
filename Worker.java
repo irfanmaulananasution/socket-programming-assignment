@@ -193,7 +193,7 @@ class Worker{
 
     // traverse the sorted map and overwrite the input array with sorted elements
     int i = 0;
-    for (var entry: freq.entrySet()) {
+    for (Map.Entry<Integer, Integer>  entry : freq.entrySet()) {
       int value = entry.getValue();
       while (value-- > 0) {
         toSort[i++] = entry.getKey();
