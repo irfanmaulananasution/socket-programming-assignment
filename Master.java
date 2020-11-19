@@ -7,17 +7,29 @@ import java.lang.Thread;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-//main
-//prepareMaster
-//connectWorker
-//disconnectWorker
-//readShellCommand
-//distributeJob
-//getWorkerWithLowestQueue
-//sendJob
-//receiveFromWorker
-//print
-//seeder
+// main
+// prepareMaster
+// requestInitialWorkerAddress
+// connectWorker
+// disconnectWorker
+// showWorkerAddressList
+// readShellCommand
+// distributeJob
+// getWorkerWithLowestQueue
+// sendJob
+// receiveFromWorker
+// autoScaling
+// println
+// println
+// print
+// seeder
+
+/*DEMOABLE version (matiin autoscaling)
+1. comment line 46, uncomment line 47-49
+2. comment line 101,104,107 (matiin autoScaling)
+3. comment line 206, uncomment 207
+*/
+
 class Master{
   static Random rand = new Random();
   static ArrayList<Socket> socketList;
@@ -37,7 +49,11 @@ class Master{
   //format sort = "sort id # array", id = xxxyyy, xxx=kode perequest (dari shell = 000), yyy=kode job keberapa
   public static void main(String args[]) throws Exception {//argumen 0 = port server socket
     prepareMaster();
+    
     connectWorker(workerAddressInfo.get(0));
+    //for(int addressIdx=0; addressIdx<workerAddressInfo.size(); addressIdx++) {
+    //  connectWorker(workerAddressInfo.get(addressIdx));
+    //}
     println(
       "---------------List Of Command---------------\n"+
       ">help = show the command list\n"+
@@ -193,6 +209,7 @@ class Master{
       case "showFinishedJob" : //format : showFinishedJob
         println("showFinishedJob");
         print(finishedJobsQueue.peek());
+        //print(finishedJobsQueue.peek());
         println(" in Queue : " + finishedJobsQueue.size());
         break;
       case "pauseDistribution" : //format : pauseDistribution [second]
