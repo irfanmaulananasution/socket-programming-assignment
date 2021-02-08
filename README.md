@@ -13,16 +13,17 @@ general requirement :
 to reuse this project do:
 1. git clone the repository
 2. run Worker.java in other device (worker can be run in more than one device)
-  '''
-  javac Worker.java
-  java Worker <port for connection to master> (ex : java Worker 3333)
-  '''
+```
+javac Worker.java
+java Worker <port for connection to master> (ex : java Worker 3333)
+```
 3. run Master.java in one device (master can only be run in one device)
-  '''
-  javac Master.java
-  java Master
-  '''
-  the program will ask an input of the worker information with format <address>:<port>. put all the worker information. and program are ready to go
+
+```
+javac Master.java
+java Master
+```
+the program will ask an input of the worker information with format <address>:<port>. put all the worker information. and program are ready to go
 
 
 ### Author
